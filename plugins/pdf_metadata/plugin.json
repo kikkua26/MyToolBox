@@ -1,0 +1,9 @@
+{
+    "id": "pdf_metadata",
+    "name": "PDF 元数据编辑",
+    "category": "文档工具",
+    "version": "1.0.0",
+    "author": "dev",
+    "description": "编辑 PDF 文件的元数据信息",
+    "entry_point": "pdf_metadata.widget:PdfMetadataPlugin"
+}

@@ -1,0 +1,9 @@
+{
+    "id": "pdf_merge",
+    "name": "PDF 合并",
+    "category": "文档工具",
+    "version": "1.0.0",
+    "author": "dev",
+    "description": "合并多个 PDF 文件，支持拖拽排序",
+    "entry_point": "pdf_merge.widget:PdfMergePlugin"
+}

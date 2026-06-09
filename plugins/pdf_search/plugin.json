@@ -1,0 +1,9 @@
+{
+    "id": "pdf_search",
+    "name": "PDF 检查",
+    "category": "文档工具",
+    "version": "1.0.0",
+    "author": "dev",
+    "description": "PDF关键词搜索与预览检查",
+    "entry_point": "pdf_search.widget:PdfSearchPlugin"
+}

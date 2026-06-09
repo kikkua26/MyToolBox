@@ -1,0 +1,9 @@
+{
+    "id": "batch_rename",
+    "name": "批量改后缀",
+    "category": "文档工具",
+    "version": "1.0.0",
+    "author": "dev",
+    "description": "批量修改文件后缀名",
+    "entry_point": "batch_rename.widget:BatchRenamePlugin"
+}
