@@ -43,7 +43,7 @@ class PdfCanvas(QWidget):
         self._pdf_doc: Optional[fitz.Document] = None
         self._current_page = 0
         self._pixmap: Optional[QPixmap] = None
-        self._search_highlights: List[Tuple[int, List[fitz.Rect]]] = []
+        self._search_highlights: Dict[int, List[fitz.Rect]] = {}
         self._scale = 1.0
         self._offset = QPoint(0, 0)
         self._is_dragging = False
@@ -56,7 +56,7 @@ class PdfCanvas(QWidget):
         try:
             self._pdf_doc = fitz.open(filepath)
             self._current_page = 0
-            self._search_highlights = []
+            self._search_highlights = {}
             self._scale = 1.0
             self._offset = QPoint(0, 0)
             self.render_page()
@@ -97,11 +97,14 @@ class PdfCanvas(QWidget):
         return len(self._pdf_doc) if self._pdf_doc else 0
     
     def add_highlights(self, page_num: int, rects: List[fitz.Rect]) -> None:
-        self._search_highlights.append((page_num, rects))
+        if page_num in self._search_highlights:
+            self._search_highlights[page_num].extend(rects)
+        else:
+            self._search_highlights[page_num] = list(rects)
         self.update()
     
     def clear_highlights(self) -> None:
-        self._search_highlights = []
+        self._search_highlights = {}
         self.update()
     
     def scroll_to_highlight(self, page_num: int, rect: fitz.Rect) -> None:
@@ -125,7 +128,8 @@ class PdfCanvas(QWidget):
         fit_scale = min(scale_x, scale_y)
         final_scale = fit_scale * self._scale
         
-        matrix = fitz.Matrix(final_scale, final_scale)
+        base_scale = self._base_matrix.a
+        matrix = fitz.Matrix(final_scale * base_scale, final_scale * base_scale)
         scaled = rect * matrix
         rect_center_x = (scaled.x0 + scaled.x1) / 2
         rect_center_y = (scaled.y0 + scaled.y1) / 2
@@ -257,9 +261,10 @@ class PdfCanvas(QWidget):
         painter.fillRect(0, 0, container_width, container_height, QColor(245, 245, 245))
         painter.drawPixmap(self._offset.x(), self._offset.y(), scaled_pixmap)
         
-        if self._current_page < len(self._search_highlights):
-            _, rects = self._search_highlights[self._current_page]
-            matrix = fitz.Matrix(final_scale, final_scale)
+        if self._current_page in self._search_highlights:
+            rects = self._search_highlights[self._current_page]
+            base_scale = self._base_matrix.a
+            matrix = fitz.Matrix(final_scale * base_scale, final_scale * base_scale)
             for r in rects:
                 scaled = r * matrix
                 x0 = self._offset.x() + scaled.x0
