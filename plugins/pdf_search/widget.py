@@ -18,6 +18,7 @@ from app.utils.logger import get_logger
 
 from .components import PdfCanvas, ResultPanel, SearchResult
 from .components.keyword_manager import KeywordManager
+from .components.collapsible_panel import CollapsiblePanel
 
 logger = get_logger("PdfSearchPlugin")
 
@@ -35,6 +36,8 @@ class PdfSearchPlugin(BasePlugin):
         self._page_label: Optional[QLabel] = None
         self._scale_label: Optional[QLabel] = None
         self._config = ConfigManager()
+        self._splitter: Optional[QSplitter] = None
+        self._left_panel: Optional[CollapsiblePanel] = None
     
     def get_widget(self) -> QWidget:
         if self._widget is not None:
@@ -45,18 +48,21 @@ class PdfSearchPlugin(BasePlugin):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        splitter = QSplitter(Qt.Horizontal)
+        self._splitter = QSplitter(Qt.Horizontal)
 
         left_panel = self._create_left_panel()
         middle_panel = self._create_middle_panel()
         right_panel = self._create_right_panel()
 
-        splitter.addWidget(left_panel)
-        splitter.addWidget(middle_panel)
-        splitter.addWidget(right_panel)
-        splitter.setSizes([280, 600, 320])
+        self._splitter.addWidget(left_panel)
+        self._splitter.addWidget(middle_panel)
+        self._splitter.addWidget(right_panel)
+        self._splitter.setSizes([280, 600, 320])
+        self._splitter.setStretchFactor(0, 0)
+        self._splitter.setStretchFactor(1, 1)
+        self._splitter.setStretchFactor(2, 0)
 
-        root.addWidget(splitter)
+        root.addWidget(self._splitter)
         self._widget = w
         self._connect_signals()
         return w
@@ -73,7 +79,16 @@ class PdfSearchPlugin(BasePlugin):
         file_group = self._create_file_group()
         layout.addWidget(file_group)
 
-        return panel
+        self._left_panel = CollapsiblePanel(panel)
+        self._left_panel.toggled.connect(self._on_left_panel_toggled)
+        return self._left_panel
+    
+    def _on_left_panel_toggled(self, expanded: bool) -> None:
+        if self._splitter:
+            if expanded:
+                self._splitter.setSizes([280, 600, 320])
+            else:
+                self._splitter.setSizes([20, 860, 320])
     
     def _create_file_group(self) -> QWidget:
         from PySide6.QtWidgets import QGroupBox, QVBoxLayout

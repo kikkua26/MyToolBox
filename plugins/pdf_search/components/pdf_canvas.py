@@ -241,13 +241,15 @@ class PdfCanvas(QWidget):
         return super().sizeHint()
     
     def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        bg_color = self.palette().window().color()
+        
         if not self._pixmap:
-            painter = QPainter(self)
-            painter.fillRect(self.rect(), QColor(245, 245, 245))
+            painter.fillRect(self.rect(), bg_color)
+            painter.setPen(self.palette().windowText().color())
             painter.drawText(self.rect(), Qt.AlignCenter, "请选择PDF文件")
             return
         
-        painter = QPainter(self)
         painter.setRenderHint(QPainter.SmoothPixmapTransform)
         
         container_width = self.width()
@@ -267,7 +269,7 @@ class PdfCanvas(QWidget):
             Qt.SmoothTransformation
         )
         
-        painter.fillRect(0, 0, container_width, container_height, QColor(245, 245, 245))
+        painter.fillRect(0, 0, container_width, container_height, bg_color)
         painter.drawPixmap(self._offset.x(), self._offset.y(), scaled_pixmap)
         
         if self._current_page in self._search_highlights:

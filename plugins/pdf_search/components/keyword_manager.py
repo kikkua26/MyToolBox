@@ -120,7 +120,7 @@ class KeywordManager(QWidget):
         btn_row.setSpacing(6)
         
         add_keyword_btn = QPushButton("+ 添加关键词")
-        add_keyword_btn.setFixedSize(100, 28)
+        add_keyword_btn.setMinimumWidth(110)
         add_keyword_btn.setStyleSheet("""
             QPushButton {
                 background-color: #ecfdf5;
@@ -138,7 +138,7 @@ class KeywordManager(QWidget):
         btn_row.addWidget(add_keyword_btn)
         
         add_group_btn = QPushButton("+ 新建分组")
-        add_group_btn.setFixedSize(90, 28)
+        add_group_btn.setMinimumWidth(100)
         add_group_btn.setStyleSheet("""
             QPushButton {
                 background-color: #eff6ff;
