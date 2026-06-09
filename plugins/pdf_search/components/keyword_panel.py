@@ -51,8 +51,25 @@ class KeywordPanel(QWidget):
         self._keyword_input.returnPressed.connect(self._on_add_keyword)
         input_row.addWidget(self._keyword_input)
         
-        add_btn = QPushButton("➕ 添加")
-        add_btn.setFixedSize(60, 30)
+        add_btn = QPushButton("+")
+        add_btn.setFixedSize(36, 30)
+        add_btn.setToolTip("添加关键词")
+        add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3b82f6;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #60a5fa;
+            }
+            QPushButton:pressed {
+                background-color: #2563eb;
+            }
+        """)
         add_btn.clicked.connect(self._on_add_keyword)
         input_row.addWidget(add_btn)
         group_layout.addLayout(input_row)
@@ -62,13 +79,13 @@ class KeywordPanel(QWidget):
         group_layout.addWidget(self._keyword_list)
 
         btn_row = QHBoxLayout()
-        del_btn = QPushButton("🗑 删除选中")
-        del_btn.setFixedHeight(28)
+        del_btn = QPushButton("删除")
+        del_btn.setFixedSize(60, 28)
         del_btn.clicked.connect(self._on_delete_keyword)
         btn_row.addWidget(del_btn)
         
         clear_btn = QPushButton("清空")
-        clear_btn.setFixedHeight(28)
+        clear_btn.setFixedSize(60, 28)
         clear_btn.clicked.connect(self._on_clear_keywords)
         btn_row.addWidget(clear_btn)
         btn_row.addStretch()

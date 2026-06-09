@@ -1,31 +1,21 @@
-"""批量改后缀插件：选择目录或多选文件，将指定后缀批量改为新后缀。"""
+"""批量改后缀插件主组件：整合各子组件，管理整体布局和事件连接。"""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFileDialog,
-    QGroupBox,
-    QHBoxLayout,
-    QHeaderView,
-    QLabel,
-    QLineEdit,
-    QMessageBox,
-    QProgressBar,
-    QPushButton,
-    QRadioButton,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
+    QHBoxLayout, QLabel, QMessageBox, QProgressBar, QPushButton,
+    QVBoxLayout, QWidget
 )
 
 from app.base_plugin import BasePlugin
 from app.utils.logger import get_logger
 from app.utils.ui_helpers import ButtonSpinner, open_in_file_manager
+
+from .components import FileTable, SourcePanel, ExtensionPanel
+from .logic import BatchRenameLogic
 
 logger = get_logger("BatchRenamePlugin")
 
@@ -36,14 +26,12 @@ class BatchRenamePlugin(BasePlugin):
 
     def __init__(self) -> None:
         self._widget: Optional[QWidget] = None
-        self._files: list[Path] = []
-        self._table: Optional[QTableWidget] = None
-        self._src_ext: Optional[QLineEdit] = None
-        self._dst_ext: Optional[QLineEdit] = None
+        self._file_table: Optional[FileTable] = None
+        self._source_panel: Optional[SourcePanel] = None
+        self._extension_panel: Optional[ExtensionPanel] = None
+        self._logic: BatchRenameLogic = BatchRenameLogic()
         self._progress: Optional[QProgressBar] = None
         self._status_label: Optional[QLabel] = None
-        self._dir_radio: Optional[QRadioButton] = None
-        self._file_radio: Optional[QRadioButton] = None
         self._btn_exec: Optional[QPushButton] = None
         self._btn_preview: Optional[QPushButton] = None
         self._btn_open_dir: Optional[QPushButton] = None
@@ -74,69 +62,18 @@ class BatchRenamePlugin(BasePlugin):
         top_row.setSpacing(12)
 
         # 左：来源
-        src_group = QGroupBox("文件来源")
-        src_lay = QVBoxLayout(src_group)
-        src_lay.setContentsMargins(12, 10, 12, 8)
-        src_lay.setSpacing(6)
-
-        mode_row = QHBoxLayout()
-        self._dir_radio = QRadioButton("目录")
-        self._dir_radio.setChecked(True)
-        self._file_radio = QRadioButton("文件")
-        mode_row.addWidget(self._dir_radio)
-        mode_row.addWidget(self._file_radio)
-        mode_row.addStretch()
-
-        btn_browse = QPushButton("📂 浏览")
-        btn_browse.setObjectName("primary")
-        btn_browse.setFixedHeight(30)
-        btn_browse.clicked.connect(self._on_browse)
-        mode_row.addWidget(btn_browse)
-        src_lay.addLayout(mode_row)
-
-        top_row.addWidget(src_group, 1)
+        self._source_panel = SourcePanel()
+        top_row.addWidget(self._source_panel, 1)
 
         # 右：后缀
-        ext_group = QGroupBox("后缀设置")
-        ext_lay = QHBoxLayout(ext_group)
-        ext_lay.setContentsMargins(12, 10, 12, 8)
-        ext_lay.setSpacing(8)
-
-        ext_lay.addWidget(QLabel("从"))
-        self._src_ext = QLineEdit()
-        self._src_ext.setPlaceholderText(".txt")
-        self._src_ext.setFixedWidth(100)
-        self._src_ext.setFixedHeight(30)
-        ext_lay.addWidget(self._src_ext)
-
-        ext_lay.addWidget(QLabel("→"))
-
-        self._dst_ext = QLineEdit()
-        self._dst_ext.setPlaceholderText(".md")
-        self._dst_ext.setFixedWidth(100)
-        self._dst_ext.setFixedHeight(30)
-        ext_lay.addWidget(self._dst_ext)
-
-        btn_filter = QPushButton("筛选")
-        btn_filter.setFixedHeight(30)
-        btn_filter.clicked.connect(self._on_filter)
-        ext_lay.addWidget(btn_filter)
-
-        ext_lay.addStretch()
-        top_row.addWidget(ext_group, 1)
+        self._extension_panel = ExtensionPanel()
+        top_row.addWidget(self._extension_panel, 1)
 
         root.addLayout(top_row)
 
         # 文件列表
-        self._table = QTableWidget(0, 3)
-        self._table.setHorizontalHeaderLabels(["文件名", "路径", "状态"])
-        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.verticalHeader().setVisible(False)
-        root.addWidget(self._table, 1)
+        self._file_table = FileTable()
+        root.addWidget(self._file_table, 1)
 
         # 进度条
         self._progress = QProgressBar()
@@ -181,113 +118,84 @@ class BatchRenamePlugin(BasePlugin):
         root.addLayout(action_row)
 
         self._widget = w
+        self._connect_signals()
         return w
 
+    def _connect_signals(self) -> None:
+        if self._source_panel:
+            self._source_panel.directory_selected.connect(self._on_directory_selected)
+            self._source_panel.files_selected.connect(self._on_files_selected)
+    
     def get_control_widget(self) -> Optional[QWidget]:
         return None
 
     # ── 浏览 ─────────────────────────────────────────────
 
-    def _on_browse(self) -> None:
-        if self._dir_radio and self._dir_radio.isChecked():
-            d = QFileDialog.getExistingDirectory(None, "选择目录")
-            if d:
-                self._load_directory(Path(d))
-        else:
-            files, _ = QFileDialog.getOpenFileNames(None, "选择文件")
-            if files:
-                self._load_files([Path(f) for f in files])
+    def _on_directory_selected(self, directory: Path) -> None:
+        count, msg = self._logic.load_directory(directory)
+        self._file_table.set_files(self._logic.get_files())
+        self._set_status(f"{msg}，共 {count} 个文件")
 
-    def _load_directory(self, directory: Path) -> None:
-        self._files = sorted(
-            [p for p in directory.rglob("*") if p.is_file()],
-            key=lambda p: p.name,
-        )
-        self._refresh_table()
-        self._set_status(f"已加载目录: {directory}，共 {len(self._files)} 个文件")
-
-    def _load_files(self, files: list[Path]) -> None:
-        self._files = sorted(files, key=lambda p: p.name)
-        self._refresh_table()
-        self._set_status(f"已加载 {len(self._files)} 个文件")
+    def _on_files_selected(self, files: list[Path]) -> None:
+        count, msg = self._logic.load_files(files)
+        self._file_table.set_files(self._logic.get_files())
+        self._set_status(f"{msg}，共 {count} 个文件")
 
     def _on_clear(self) -> None:
-        self._files.clear()
-        self._refresh_table()
+        self._logic.clear_files()
+        self._file_table.clear()
         self._set_status("已清空")
         if self._btn_open_dir:
             self._btn_open_dir.setVisible(False)
 
     def _on_filter(self) -> None:
-        ext = self._src_ext.text().strip() if self._src_ext else ""
+        ext = self._extension_panel.get_source_ext() if self._extension_panel else ""
         if not ext:
             self._set_status("⚠️ 请先填写源后缀")
             return
-        if not ext.startswith("."):
-            ext = "." + ext
-        before = len(self._files)
-        self._files = [f for f in self._files if f.suffix.lower() == ext.lower()]
-        self._refresh_table()
-        self._set_status(f"已筛选 {ext}: {before} → {len(self._files)}")
-
-    def _refresh_table(self) -> None:
-        if not self._table:
-            return
-        self._table.setRowCount(len(self._files))
-        for i, f in enumerate(self._files):
-            self._table.setItem(i, 0, QTableWidgetItem(f.name))
-            self._table.setItem(i, 1, QTableWidgetItem(str(f.parent)))
-            self._table.setItem(i, 2, QTableWidgetItem("待处理"))
-        if self._progress:
-            self._progress.setValue(0)
+        count, msg = self._logic.filter_by_extension(ext)
+        self._file_table.set_files(self._logic.get_files())
+        self._set_status(msg)
 
     # ── 预览 ─────────────────────────────────────────────
 
     def _on_preview(self) -> None:
-        src = self._src_ext.text().strip()
-        dst = self._dst_ext.text().strip()
+        src = self._extension_panel.get_source_ext() if self._extension_panel else ""
+        dst = self._extension_panel.get_target_ext() if self._extension_panel else ""
+        
         if not src or not dst:
             self._set_status("⚠️ 请填写源后缀和目标后缀")
             return
-        if not src.startswith("."):
-            src = "." + src
-        if not dst.startswith("."):
-            dst = "." + dst
 
-        matched = [f for f in self._files if f.suffix.lower() == src.lower()]
-        if not matched:
-            self._set_status(f"没有找到 {src} 文件")
-            return
-
-        for i, f in enumerate(self._files):
-            if f.suffix.lower() == src.lower():
-                self._table.setItem(i, 2, QTableWidgetItem(f"{f.name} → {f.stem}{dst}"))
+        results = self._logic.preview_rename(src, dst)
+        matched_count = sum(1 for _, _, new_name in results if new_name != "跳过")
+        
+        for row, old_name, new_name in results:
+            if new_name != "跳过":
+                self._file_table.update_row_status(row, f"{old_name} → {new_name}")
             else:
-                self._table.setItem(i, 2, QTableWidgetItem("跳过"))
+                self._file_table.update_row_status(row, "跳过")
 
-        self._set_status(f"预览: {len(matched)} 个文件将被重命名")
+        self._set_status(f"预览: {matched_count} 个文件将被重命名")
 
     # ── 执行 ─────────────────────────────────────────────
 
     def _on_execute(self) -> None:
-        src = self._src_ext.text().strip() if self._src_ext else ""
-        dst = self._dst_ext.text().strip() if self._dst_ext else ""
+        src = self._extension_panel.get_source_ext() if self._extension_panel else ""
+        dst = self._extension_panel.get_target_ext() if self._extension_panel else ""
+        
         if not src or not dst:
             self._set_status("⚠️ 请填写源后缀和目标后缀")
             return
-        if not src.startswith("."):
-            src = "." + src
-        if not dst.startswith("."):
-            dst = "." + dst
 
-        matched = [(i, f) for i, f in enumerate(self._files) if f.suffix.lower() == src.lower()]
-        if not matched:
+        matched_count = sum(1 for f in self._logic.get_files() if f.suffix.lower() == src.lower())
+        if matched_count == 0:
             self._set_status(f"没有找到 {src} 文件")
             return
 
         reply = QMessageBox.question(
             None, "确认",
-            f"即将重命名 {len(matched)} 个文件 ({src} → {dst})，确认？",
+            f"即将重命名 {matched_count} 个文件 ({src} → {dst})，确认？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -296,35 +204,30 @@ class BatchRenamePlugin(BasePlugin):
         if self._spinner_exec:
             self._spinner_exec.start()
 
-        success = errors = 0
-        total = len(matched)
+        success, errors, last_dir, error_messages = self._logic.execute_rename(src, dst)
+        files = self._logic.get_files()
+        total = matched_count
 
-        for idx, (row, f) in enumerate(matched):
-            new_path = f.parent / (f.stem + dst)
-            try:
-                if new_path.exists():
-                    raise FileExistsError("目标文件已存在")
-                f.rename(new_path)
-                self._files[row] = new_path
-                self._table.setItem(row, 0, QTableWidgetItem(new_path.name))
-                self._table.setItem(row, 2, QTableWidgetItem("✅"))
-                success += 1
-                self._last_output_dir = new_path.parent
-            except Exception as e:
-                self._table.setItem(row, 2, QTableWidgetItem(f"❌ {e}"))
-                errors += 1
-                logger.exception("重命名失败: %s", f)
-
+        for i, f in enumerate(files):
+            if f.suffix.lower() == dst.lower():
+                self._file_table.update_row_filename(i, f.name)
+                self._file_table.update_row_status(i, "✅")
             if self._progress:
-                self._progress.setValue(int((idx + 1) / total * 100))
+                self._progress.setValue(int((i + 1) / len(files) * 100))
 
         if self._spinner_exec:
             self._spinner_exec.stop("🚀 执行重命名")
 
-        self._set_status(f"完成: {success} 成功, {errors} 失败")
+        if errors > 0 and error_messages:
+            self._set_status(f"⚠️ 完成: {success} 成功, {errors} 失败")
+            error_text = "\n".join(error_messages)
+            QMessageBox.warning(None, "重命名失败", f"以下文件重命名失败:\n\n{error_text}")
+        else:
+            self._set_status(f"✅ 完成: {success} 成功, {errors} 失败")
 
-        if self._btn_open_dir and self._last_output_dir:
+        if self._btn_open_dir and last_dir:
             self._btn_open_dir.setVisible(True)
+            self._last_output_dir = last_dir
 
     # ── 打开目录 ─────────────────────────────────────────
 

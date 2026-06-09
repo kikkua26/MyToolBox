@@ -7,8 +7,29 @@ from typing import List
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QListWidget, QListWidgetItem
+    QWidget, QVBoxLayout, QLabel, QListWidget, QListWidgetItem, QListWidget
 )
+
+
+class ClickableResultWidget(QWidget):
+    """可点击的搜索结果widget，支持点击跳转"""
+    def __init__(self, result: 'SearchResult', parent: 'ResultPanel'):
+        super().__init__()
+        self._result = result
+        self._parent = parent
+    
+    def mousePressEvent(self, event):
+        """点击时触发跳转"""
+        self._parent.result_clicked.emit(self._result)
+
+
+class ClickableListWidgetItem(QListWidgetItem):
+    """可点击的列表项，存储关联的搜索结果"""
+    def __init__(self, list_widget: QListWidget, result: 'SearchResult'):
+        super().__init__()
+        self._result = result
+        self._list_widget = list_widget
+        self.setFlags(self.flags() | Qt.ItemFlag.ItemIsSelectable)
 
 
 class SearchResult:
@@ -39,26 +60,13 @@ class ResultPanel(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
 
-        title = QLabel("📋 搜索结果")
+        title = QLabel("搜索结果")
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
 
         self._result_list = QListWidget()
         self._result_list.itemClicked.connect(self._on_result_click)
-        self._result_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #e0e0e0;
-                border-radius: 4px;
-                padding: 4px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            QListWidget::item:hover {
-                background-color: #f5f5f5;
-            }
-        """)
+        self._result_list.setSpacing(4)  # 设置item间距
         layout.addWidget(self._result_list)
 
         self._stats_label = QLabel("找到 0 个匹配")
@@ -66,9 +74,8 @@ class ResultPanel(QWidget):
         layout.addWidget(self._stats_label)
     
     def _on_result_click(self, item: QListWidgetItem) -> None:
-        result = item.data(Qt.ItemDataRole.UserRole)
-        if result:
-            self.result_clicked.emit(result)
+        if isinstance(item, ClickableListWidgetItem):
+            self.result_clicked.emit(item._result)
     
     def clear_results(self) -> None:
         self._result_list.clear()
@@ -79,34 +86,46 @@ class ResultPanel(QWidget):
         
         from PySide6.QtWidgets import QWidget, QVBoxLayout
         
-        for result in results:
-            page_text = f"📄 第{result.page_num + 1}页:"
-            if result.context_before or result.context_after:
-                context_text = f"...{result.context_before}" \
-                              f"<span style='background-color: #FFEB3B; color: #C62828; font-weight: bold;'>{result.keyword}</span>" \
-                              f"{result.context_after}..."
-            else:
-                context_text = f"<span style='background-color: #FFEB3B; color: #C62828; font-weight: bold;'>{result.keyword}</span>"
+        for idx, result in enumerate(results):
+            # 关键词高亮样式（黄色背景+红色文字）
+            highlight_start = "<span style='background-color: #FFEB3B; color: #D32F2F; font-weight: bold;'>"
+            highlight_end = "</span>"
             
-            item_widget = QWidget()
+            page_text = f"第 {result.page_num + 1} 页"
+            if result.context_before or result.context_after:
+                context_text = f"...{result.context_before}{highlight_start}{result.keyword}{highlight_end}{result.context_after}..."
+            else:
+                context_text = f"{highlight_start}{result.keyword}{highlight_end}"
+            
+            # 创建自定义widget，整个区域可点击
+            item_widget = ClickableResultWidget(result, self)
             item_layout = QVBoxLayout(item_widget)
-            item_layout.setContentsMargins(4, 4, 4, 4)
+            item_layout.setContentsMargins(8, 6, 8, 6)
+            item_layout.setSpacing(4)
             
             page_label = QLabel(page_text)
-            page_label.setStyleSheet("font-size: 12px; color: #666;")
+            page_label.setStyleSheet("font-size: 12px; font-weight: bold;")
             item_layout.addWidget(page_label)
             
             context_label = QLabel()
             context_label.setTextFormat(Qt.RichText)
             context_label.setText(context_text)
-            context_label.setStyleSheet("font-size: 13px;")
             context_label.setWordWrap(True)
+            context_label.setStyleSheet("font-size: 13px;")
+            context_label.setMinimumWidth(260)
             item_layout.addWidget(context_label)
             
+            # 设置最小高度确保不太小，最大高度避免过高
+            item_widget.setMinimumHeight(50)
+            item_widget.setMaximumHeight(120)
+            
+            # 创建可点击的list item
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, result)
             self._result_list.addItem(item)
             self._result_list.setItemWidget(item, item_widget)
+            
+            # 根据内容自动计算高度
             item.setSizeHint(item_widget.sizeHint())
         
         self._stats_label.setText(f"找到 {len(results)} 个匹配")

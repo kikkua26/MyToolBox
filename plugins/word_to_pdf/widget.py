@@ -1,23 +1,18 @@
-"""Word 转 PDF 插件：批量将 Word 文档转换为 PDF。"""
+"""Word转PDF插件主组件：整合各子组件，管理整体布局和事件连接。"""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtCore import QThread
 from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QListWidget,
-    QListWidgetItem,
-    QMessageBox,
     QProgressBar,
     QPushButton,
-    QRadioButton,
     QVBoxLayout,
     QWidget,
 )
@@ -27,57 +22,10 @@ from app.config_manager import ConfigManager
 from app.utils.logger import get_logger
 from app.utils.ui_helpers import ButtonSpinner, open_in_file_manager, open_file
 
+from .components import FileListPanel, OutputSettings, SourceSelector
+from .logic import ConvertWorker
+
 logger = get_logger("WordToPdfPlugin")
-
-
-class ConvertWorker(QObject):
-    progress_updated = Signal(int, str)
-    finished = Signal(int, int, Path)
-    error = Signal(str)
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._files: list[Path] = []
-        self._output_dir: Path = Path(".")
-        self._running = True
-
-    def set_task(self, files: list[Path], output_dir: Path) -> None:
-        self._files = files
-        self._output_dir = output_dir
-        self._running = True
-
-    def stop(self) -> None:
-        self._running = False
-
-    def run(self) -> None:
-        success_count = 0
-        fail_count = 0
-
-        try:
-            from docx2pdf import convert
-
-            for idx, f in enumerate(self._files):
-                if not self._running:
-                    break
-
-                try:
-                    output_path = self._output_dir / f.with_suffix(".pdf").name
-                    self.progress_updated.emit(idx, f"转换中: {f.name}")
-                    convert(str(f), str(output_path))
-                    success_count += 1
-                    logger.info("转换成功: %s -> %s", f.name, output_path)
-                except Exception as e:
-                    fail_count += 1
-                    logger.exception("转换失败: %s", f.name)
-
-            self.progress_updated.emit(len(self._files), "转换完成")
-            self.finished.emit(success_count, fail_count, self._output_dir)
-
-        except ImportError:
-            self.error.emit("❌ 缺少 docx2pdf，请运行: pip install docx2pdf")
-        except Exception as e:
-            self.error.emit(f"❌ 转换失败: {e}")
-            logger.exception("Word 转 PDF 失败")
 
 
 class WordToPdfPlugin(BasePlugin):
@@ -86,13 +34,11 @@ class WordToPdfPlugin(BasePlugin):
 
     def __init__(self) -> None:
         self._widget: Optional[QWidget] = None
-        self._files: list[Path] = []
-        self._list: Optional[QListWidget] = None
-        self._output_dir: Optional[QLineEdit] = None
+        self._source_selector: Optional[SourceSelector] = None
+        self._output_settings: Optional[OutputSettings] = None
+        self._file_list: Optional[FileListPanel] = None
         self._status_label: Optional[QLabel] = None
         self._progress_bar: Optional[QProgressBar] = None
-        self._dir_radio: Optional[QRadioButton] = None
-        self._file_radio: Optional[QRadioButton] = None
         self._btn_convert: Optional[QPushButton] = None
         self._btn_cancel: Optional[QPushButton] = None
         self._btn_open_dir: Optional[QPushButton] = None
@@ -101,6 +47,7 @@ class WordToPdfPlugin(BasePlugin):
         self._spinner: Optional[ButtonSpinner] = None
         self._config = ConfigManager()
         self._worker: Optional[ConvertWorker] = None
+        self._thread: Optional[QThread] = None
 
     def get_widget(self) -> QWidget:
         if self._widget is not None:
@@ -123,44 +70,15 @@ class WordToPdfPlugin(BasePlugin):
         top_row.setSpacing(12)
 
         src_group = QGroupBox("文件来源")
-        src_lay = QVBoxLayout(src_group)
-        src_lay.setContentsMargins(12, 10, 12, 8)
-        src_lay.setSpacing(6)
-
-        mode_row = QHBoxLayout()
-        self._dir_radio = QRadioButton("目录（自动筛选 Word）")
-        self._dir_radio.setChecked(True)
-        self._file_radio = QRadioButton("多选文件")
-        mode_row.addWidget(self._dir_radio)
-        mode_row.addWidget(self._file_radio)
-        mode_row.addStretch()
-
-        btn_browse = QPushButton("📂 浏览")
-        btn_browse.setObjectName("primary")
-        btn_browse.setFixedHeight(30)
-        btn_browse.clicked.connect(self._on_browse)
-        mode_row.addWidget(btn_browse)
-        src_lay.addLayout(mode_row)
-
+        self._source_selector = SourceSelector(self._on_browse)
+        src_group.setLayout(QVBoxLayout())
+        src_group.layout().addWidget(self._source_selector)
         top_row.addWidget(src_group, 1)
 
         out_group = QGroupBox("输出设置")
-        out_lay = QVBoxLayout(out_group)
-        out_lay.setContentsMargins(12, 10, 12, 8)
-        out_lay.setSpacing(6)
-
-        dir_row = QHBoxLayout()
-        dir_row.addWidget(QLabel("目录:"))
-        self._output_dir = QLineEdit()
-        self._output_dir.setPlaceholderText("默认为源文件目录")
-        self._output_dir.setFixedHeight(30)
-        dir_row.addWidget(self._output_dir, 1)
-        btn_out = QPushButton("📂")
-        btn_out.setFixedSize(30, 30)
-        btn_out.clicked.connect(self._on_browse_output_dir)
-        dir_row.addWidget(btn_out)
-        out_lay.addLayout(dir_row)
-
+        self._output_settings = OutputSettings(self._on_browse_output_dir)
+        out_group.setLayout(QVBoxLayout())
+        out_group.layout().addWidget(self._output_settings)
         top_row.addWidget(out_group, 1)
         root.addLayout(top_row)
 
@@ -169,24 +87,8 @@ class WordToPdfPlugin(BasePlugin):
         list_lay.setContentsMargins(12, 10, 12, 8)
         list_lay.setSpacing(6)
 
-        self._list = QListWidget()
-        self._list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
-        list_lay.addWidget(self._list, 1)
-
-        sort_row = QHBoxLayout()
-        btn_remove = QPushButton("🗑 移除选中")
-        btn_remove.setObjectName("danger")
-        btn_remove.setFixedHeight(28)
-        btn_remove.clicked.connect(self._on_remove_selected)
-        sort_row.addWidget(btn_remove)
-
-        btn_clear = QPushButton("清空")
-        btn_clear.setFixedHeight(28)
-        btn_clear.clicked.connect(self._on_clear)
-        sort_row.addWidget(btn_clear)
-
-        sort_row.addStretch()
-        list_lay.addLayout(sort_row)
+        self._file_list = FileListPanel()
+        list_lay.addWidget(self._file_list, 1)
         root.addWidget(list_group, 1)
 
         self._progress_bar = QProgressBar()
@@ -235,57 +137,29 @@ class WordToPdfPlugin(BasePlugin):
 
     def _on_browse(self) -> None:
         last_dir = self._config.get_path("word_to_pdf", "source_dir")
-        if self._dir_radio and self._dir_radio.isChecked():
+        if self._source_selector.is_directory_mode():
             d = QFileDialog.getExistingDirectory(None, "选择目录", last_dir)
             if d:
                 self._config.set_path("word_to_pdf", "source_dir", d)
-                self._files = sorted(
-                    Path(d).rglob("*.docx"), key=lambda p: p.name
-                )
-                self._refresh_list()
-                self._set_status(f"已加载 {len(self._files)} 个 Word 文件")
+                files = sorted(Path(d).rglob("*.docx"), key=lambda p: p.name)
+                self._file_list.set_files(files)
+                self._set_status(f"已加载 {len(files)} 个 Word 文件")
         else:
             files, _ = QFileDialog.getOpenFileNames(None, "选择 Word", last_dir, "Word (*.docx)")
             if files:
-                self._files = [Path(f) for f in files]
-                self._refresh_list()
-                self._set_status(f"已加载 {len(self._files)} 个 Word 文件")
+                self._file_list.set_files([Path(f) for f in files])
+                self._set_status(f"已加载 {len(files)} 个 Word 文件")
 
     def _on_browse_output_dir(self) -> None:
         last_dir = self._config.get_path("word_to_pdf", "output_dir")
         d = QFileDialog.getExistingDirectory(None, "选择输出目录", last_dir)
-        if d and self._output_dir:
+        if d:
             self._config.set_path("word_to_pdf", "output_dir", d)
-            self._output_dir.setText(d)
-
-    def _on_clear(self) -> None:
-        self._files.clear()
-        if self._list:
-            self._list.clear()
-        self._set_status("已清空")
-        self._hide_result_buttons()
-
-    def _refresh_list(self) -> None:
-        if not self._list:
-            return
-        self._list.clear()
-        for f in self._files:
-            item = QListWidgetItem(f"📄  {f.name}    ({f.parent})")
-            item.setData(Qt.ItemDataRole.UserRole, str(f))
-            self._list.addItem(item)
-        self._hide_result_buttons()
-
-    def _on_remove_selected(self) -> None:
-        if not self._list:
-            return
-        for idx in sorted(self._list.selectedIndexes(), reverse=True):
-            r = idx.row()
-            self._list.takeItem(r)
-            self._files.pop(r)
-        self._set_status(f"剩余 {len(self._files)} 个文件")
+            self._output_settings.set_output_dir(d)
 
     def _on_convert(self) -> None:
-        if len(self._files) == 0:
+        files = self._file_list.get_files()
+        if len(files) == 0:
             self._set_status("⚠️ 请先添加 Word 文件")
             return
 
@@ -293,8 +167,8 @@ class WordToPdfPlugin(BasePlugin):
             self._set_status("⚠️ 正在转换中，请等待")
             return
 
-        output_dir_str = self._output_dir.text().strip() if self._output_dir else ""
-        output_dir = Path(output_dir_str) if output_dir_str else self._files[0].parent
+        output_dir_str = self._output_settings.get_output_dir()
+        output_dir = Path(output_dir_str) if output_dir_str else files[0].parent
 
         if self._spinner:
             self._spinner.start()
@@ -304,15 +178,15 @@ class WordToPdfPlugin(BasePlugin):
             self._btn_cancel.setVisible(True)
         if self._progress_bar:
             self._progress_bar.setVisible(True)
-            self._progress_bar.setRange(0, len(self._files))
+            self._progress_bar.setRange(0, len(files))
             self._progress_bar.setValue(0)
         self._hide_result_buttons()
 
         self._worker = ConvertWorker()
-        self._worker.set_task(self._files, output_dir)
+        self._worker.set_task(files, output_dir)
 
-        thread = QThread()
-        self._worker.moveToThread(thread)
+        self._thread = QThread()
+        self._worker.moveToThread(self._thread)
 
         def on_progress(idx: int, message: str) -> None:
             if self._progress_bar:
@@ -335,17 +209,13 @@ class WordToPdfPlugin(BasePlugin):
             if fail_count == 0:
                 self._set_status(f"✅ 转换成功: {success_count} 个文件")
             else:
-                self._set_status(
-                    f"⚠️ 成功 {success_count} 个，失败 {fail_count} 个"
-                )
+                self._set_status(f"⚠️ 成功 {success_count} 个，失败 {fail_count} 个")
 
             if success_count > 0:
                 if self._btn_open_dir:
                     self._btn_open_dir.setVisible(True)
                 if self._btn_open_file:
                     self._btn_open_file.setVisible(True)
-
-            thread.quit()
 
         def on_error(error_msg: str) -> None:
             self._cleanup_worker()
@@ -360,14 +230,13 @@ class WordToPdfPlugin(BasePlugin):
                 self._progress_bar.setVisible(False)
 
             self._set_status(error_msg)
-            thread.quit()
 
         self._worker.progress_updated.connect(on_progress)
         self._worker.finished.connect(on_finished)
         self._worker.error.connect(on_error)
 
-        thread.started.connect(self._worker.run)
-        thread.start()
+        self._thread.started.connect(self._worker.run)
+        self._thread.start()
 
     def _on_cancel(self) -> None:
         if self._worker:
@@ -380,6 +249,10 @@ class WordToPdfPlugin(BasePlugin):
             self._worker.finished.disconnect()
             self._worker.error.disconnect()
             self._worker = None
+        if self._thread:
+            self._thread.quit()
+            self._thread.wait()
+            self._thread = None
 
     def _hide_result_buttons(self) -> None:
         if self._btn_open_dir:

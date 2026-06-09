@@ -3,9 +3,8 @@
 每个主题定义一组设计令牌（design tokens），样式表从令牌派生，不硬编码颜色。
 
 支持的主题：
-  - midnight   深蓝夜空（默认）
-  - dracula    紫暗吸血鬼
-  - nord       北极冷调
+  - light      明亮浅色（适合白天）
+  - dark       深蓝夜空（适合夜间）
 """
 
 from __future__ import annotations
@@ -68,95 +67,67 @@ class ThemeTokens:
 # 主题定义
 # ──────────────────────────────────────────────────────────
 
-MIDNIGHT = ThemeTokens(
-    name="midnight",
-    label="🌙 午夜蓝",
-    bg_window="#0d1017",
-    bg_surface="#141821",
-    bg_elevated="#1a1f2e",
-    bg_hover="#1f2639",
-    bg_selected="#252d42",
-    bg_pressed="#1a1f2e",
-    border_subtle="#242c3d",
+LIGHT = ThemeTokens(
+    name="light",
+    label="☀️ 浅色",
+    bg_window="#ffffff",
+    bg_surface="#f8fafc",
+    bg_elevated="#f1f5f9",
+    bg_hover="#e2e8f0",
+    bg_selected="#dbeafe",
+    bg_pressed="#cbd5e1",
+    border_subtle="#e2e8f0",
     border_focus="#3b82f6",
-    text_primary="#e2e8f0",
-    text_secondary="#94a3b8",
-    text_tertiary="#64748b",
-    text_disabled="#475569",
+    text_primary="#1e293b",
+    text_secondary="#64748b",
+    text_tertiary="#94a3b8",
+    text_disabled="#cbd5e1",
     text_on_accent="#ffffff",
     accent="#3b82f6",
     accent_hover="#60a5fa",
     accent_pressed="#2563eb",
     success="#22c55e",
-    error="#ef4444",
+    error="#dc2626",
     warning="#f59e0b",
-    code_bg="#0f1419",
-    code_text="#c9d1d9",
-    scrollbar="#2a3348",
+    code_bg="#f1f5f9",
+    code_text="#334155",
+    scrollbar="#cbd5e1",
     progress_chunk="#3b82f6",
 )
 
-DRACULA = ThemeTokens(
-    name="dracula",
-    label="🧛 德古拉",
-    bg_window="#1a1024",
-    bg_surface="#221633",
-    bg_elevated="#2a1e3d",
-    bg_hover="#342750",
-    bg_selected="#3d2f5c",
-    bg_pressed="#2a1e3d",
-    border_subtle="#3a2d54",
-    border_focus="#bd93f9",
-    text_primary="#f8f8f2",
-    text_secondary="#bfb8d0",
-    text_tertiary="#88799e",
-    text_disabled="#5c4f73",
-    text_on_accent="#1a1024",
-    accent="#bd93f9",
-    accent_hover="#d4b0ff",
-    accent_pressed="#9b6ff7",
-    success="#50fa7b",
-    error="#ff5555",
-    warning="#f1fa8c",
-    code_bg="#15101e",
-    code_text="#f8f8f2",
-    scrollbar="#3a2d54",
-    progress_chunk="#bd93f9",
-)
-
-NORD = ThemeTokens(
-    name="nord",
-    label="❄️ 北境",
-    bg_window="#2e3440",
-    bg_surface="#3b4252",
-    bg_elevated="#434c5e",
-    bg_hover="#4c566a",
-    bg_selected="#4c566a",
-    bg_pressed="#434c5e",
-    border_subtle="#4c566a",
-    border_focus="#88c0d0",
-    text_primary="#eceff4",
-    text_secondary="#d8dee9",
-    text_tertiary="#a3b1c4",
-    text_disabled="#6b7d95",
-    text_on_accent="#2e3440",
-    accent="#88c0d0",
-    accent_hover="#8fbcbb",
-    accent_pressed="#81a1c1",
-    success="#a3be8c",
-    error="#bf616a",
-    warning="#ebcb8b",
-    code_bg="#272c36",
-    code_text="#d8dee9",
-    scrollbar="#4c566a",
-    progress_chunk="#88c0d0",
+DARK = ThemeTokens(
+    name="dark",
+    label="🌙 深色",
+    bg_window="#0d1117",
+    bg_surface="#161b22",
+    bg_elevated="#21262d",
+    bg_hover="#30363d",
+    bg_selected="#1f6feb",
+    bg_pressed="#0d1117",
+    border_subtle="#30363d",
+    border_focus="#58a6ff",
+    text_primary="#f0f6fc",
+    text_secondary="#8b949e",
+    text_tertiary="#6e7681",
+    text_disabled="#484f58",
+    text_on_accent="#ffffff",
+    accent="#58a6ff",
+    accent_hover="#79c0ff",
+    accent_pressed="#1f6feb",
+    success="#3fb950",
+    error="#f85149",
+    warning="#d29922",
+    code_bg="#0d1117",
+    code_text="#c9d1d9",
+    scrollbar="#30363d",
+    progress_chunk="#58a6ff",
 )
 
 THEMES: Dict[str, ThemeTokens] = {
-    t.name: t for t in [MIDNIGHT, DRACULA, NORD]
+    t.name: t for t in [LIGHT, DARK]
 }
 
-DEFAULT_THEME = "midnight"
+DEFAULT_THEME = "dark"
 
 
 # ──────────────────────────────────────────────────────────

@@ -16,7 +16,8 @@ from app.base_plugin import BasePlugin
 from app.config_manager import ConfigManager
 from app.utils.logger import get_logger
 
-from .components import PdfCanvas, KeywordPanel, ResultPanel, SearchResult
+from .components import PdfCanvas, ResultPanel, SearchResult
+from .components.keyword_manager import KeywordManager
 
 logger = get_logger("PdfSearchPlugin")
 
@@ -28,7 +29,7 @@ class PdfSearchPlugin(BasePlugin):
     def __init__(self) -> None:
         self._widget: Optional[QWidget] = None
         self._pdf_canvas: Optional[PdfCanvas] = None
-        self._keyword_panel: Optional[KeywordPanel] = None
+        self._keyword_panel: Optional[KeywordManager] = None
         self._result_panel: Optional[ResultPanel] = None
         self._search_results: List[SearchResult] = []
         self._page_label: Optional[QLabel] = None
@@ -66,7 +67,7 @@ class PdfSearchPlugin(BasePlugin):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._keyword_panel = KeywordPanel()
+        self._keyword_panel = KeywordManager(self._config)
         layout.addWidget(self._keyword_panel)
 
         file_group = self._create_file_group()
@@ -97,7 +98,6 @@ class PdfSearchPlugin(BasePlugin):
     
     def _create_middle_panel(self) -> QWidget:
         panel = QWidget()
-        panel.setStyleSheet("background-color: white;")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -109,7 +109,6 @@ class PdfSearchPlugin(BasePlugin):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll_area.setStyleSheet("QScrollArea { border: none; background-color: #f5f5f5; }")
         scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
         self._pdf_canvas = PdfCanvas()
@@ -121,10 +120,35 @@ class PdfSearchPlugin(BasePlugin):
     def _create_toolbar(self) -> QHBoxLayout:
         toolbar = QHBoxLayout()
         toolbar.setContentsMargins(12, 8, 12, 8)
-        toolbar.setSpacing(8)
+        toolbar.setSpacing(6)
         
-        prev_btn = QPushButton("⬅ 上一页")
-        prev_btn.setFixedHeight(28)
+        btn_style = """
+            QPushButton {
+                background-color: #374151;
+                color: #ffffff;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #4b5563;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #1f2937;
+                color: #ffffff;
+            }
+            QPushButton:disabled {
+                background-color: #6b7280;
+                color: #9ca3af;
+            }
+        """
+        
+        prev_btn = QPushButton("◀")
+        prev_btn.setMinimumSize(48, 28)
+        prev_btn.setMaximumSize(48, 28)
+        prev_btn.setStyleSheet(btn_style)
         prev_btn.clicked.connect(self._prev_page)
         toolbar.addWidget(prev_btn)
         
@@ -132,15 +156,19 @@ class PdfSearchPlugin(BasePlugin):
         self._page_label.setObjectName("subtitle")
         toolbar.addWidget(self._page_label)
         
-        next_btn = QPushButton("下一页 ➡")
-        next_btn.setFixedHeight(28)
+        next_btn = QPushButton("▶")
+        next_btn.setMinimumSize(48, 28)
+        next_btn.setMaximumSize(48, 28)
+        next_btn.setStyleSheet(btn_style)
         next_btn.clicked.connect(self._next_page)
         toolbar.addWidget(next_btn)
         
         toolbar.addStretch()
         
-        zoom_out_btn = QPushButton("🔍 -")
-        zoom_out_btn.setFixedSize(36, 28)
+        zoom_out_btn = QPushButton("-")
+        zoom_out_btn.setMinimumSize(40, 28)
+        zoom_out_btn.setMaximumSize(40, 28)
+        zoom_out_btn.setStyleSheet(btn_style)
         zoom_out_btn.clicked.connect(self._zoom_out)
         toolbar.addWidget(zoom_out_btn)
         
@@ -149,13 +177,17 @@ class PdfSearchPlugin(BasePlugin):
         self._scale_label.setAlignment(Qt.AlignCenter)
         toolbar.addWidget(self._scale_label)
         
-        zoom_in_btn = QPushButton("🔍 +")
-        zoom_in_btn.setFixedSize(36, 28)
+        zoom_in_btn = QPushButton("+")
+        zoom_in_btn.setMinimumSize(40, 28)
+        zoom_in_btn.setMaximumSize(40, 28)
+        zoom_in_btn.setStyleSheet(btn_style)
         zoom_in_btn.clicked.connect(self._zoom_in)
         toolbar.addWidget(zoom_in_btn)
         
-        reset_btn = QPushButton("🔄 重置")
-        reset_btn.setFixedHeight(28)
+        reset_btn = QPushButton("重置")
+        reset_btn.setMinimumSize(64, 28)
+        reset_btn.setMaximumSize(64, 28)
+        reset_btn.setStyleSheet(btn_style)
         reset_btn.clicked.connect(self._reset_zoom)
         toolbar.addWidget(reset_btn)
         
@@ -275,6 +307,7 @@ class PdfSearchPlugin(BasePlugin):
     def _on_result_click(self, result: SearchResult) -> None:
         if self._pdf_canvas:
             self._pdf_canvas.scroll_to_highlight(result.page_num, result.rect)
+            self._pdf_canvas.set_active_highlight(result.page_num, result.rect)
     
     def _prev_page(self) -> None:
         if self._pdf_canvas:
